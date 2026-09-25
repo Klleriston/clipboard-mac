@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var pollTimer: Timer?
     private var hotKey: HotKey?
+    private var popup: PopupController?
 
     /// macOS gives no pasteboard-change notification; 0.5 s is the usual compromise
     /// between catching every copy and staying idle.
@@ -30,10 +31,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             _ = MainActor.assumeIsolated { self?.monitor.tick() }
         }
 
+        popup = PopupController(monitor: monitor) { [weak self] item in
+            self?.use(item)
+        }
         hotKey = HotKey.controlOptionV { [weak self] in
-            // Replaced by the popup in Task 6.
-            guard let self else { return }
-            NSLog("macUtil hot key fired, %d items in history", monitor.history.items.count)
+            self?.popup?.toggle()
         }
     }
 
@@ -41,8 +43,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pollTimer?.invalidate()
     }
 
+    /// Puts the chosen text back on the pasteboard.
+    private func use(_ item: ClipItem) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(item.text, forType: .string)
+        monitor.acknowledgeOwnWrite()
+    }
+
+    @objc private func openPopup() {
+        popup?.show()
+    }
+
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
+        let open = NSMenuItem(title: "Abrir histórico", action: #selector(openPopup), keyEquivalent: "")
+        open.target = self
+        menu.addItem(open)
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Sair do macUtil", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         return menu
     }
