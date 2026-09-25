@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// Where the history is kept between launches.
@@ -40,7 +41,16 @@ public struct JSONHistoryStore: HistoryStore {
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        guard (try? data.write(to: url, options: .atomic)) != nil else { return }
+        // A file created by an atomic write inherits the process umask, so it
+        // would be world-readable for the moment before the chmod below.
+        // Narrow the umask across the write instead: the file is never
+        // readable by anyone else, not even briefly.
+        let previousMask = Darwin.umask(0o077)
+        let wrote = (try? data.write(to: url, options: .atomic)) != nil
+        withUnsafeBytes(of: previousMask) { _ in
+            let _ = Darwin.umask(previousMask)
+        }
+        guard wrote else { return }
         // Clipboard text is sensitive; keep it out of other accounts' reach.
         try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }

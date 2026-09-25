@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 @testable import ClipboardKit
@@ -75,4 +76,20 @@ private func withTemporaryDirectory(_ body: (URL) throws -> Void) throws {
     #expect(url.lastPathComponent == "history.json")
     #expect(url.deletingLastPathComponent().lastPathComponent == "macUtil")
     #expect(url.path.contains("Application Support"))
+}
+
+@Test func saveRestoresTheProcessUmask() throws {
+    try withTemporaryDirectory { directory in
+        let store = JSONHistoryStore(url: directory.appendingPathComponent("history.json"))
+        var history = ClipboardHistory()
+        history.record("um")
+
+        let before = umask(0o022)
+        umask(before)
+        store.save(history)
+        let after = umask(0o022)
+        umask(after)
+
+        #expect(after == before)
+    }
 }
