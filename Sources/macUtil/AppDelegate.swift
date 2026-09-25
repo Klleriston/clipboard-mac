@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var monitor: ClipboardMonitor!
     private var statusItem: NSStatusItem!
     private var pollTimer: Timer?
+    private var hotKey: HotKey?
 
     /// macOS gives no pasteboard-change notification; 0.5 s is the usual compromise
     /// between catching every copy and staying idle.
@@ -27,6 +28,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pollTimer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
             // The timer fires on the main run loop, so main-actor state is safe here.
             _ = MainActor.assumeIsolated { self?.monitor.tick() }
+        }
+
+        hotKey = HotKey.controlOptionV { [weak self] in
+            // Replaced by the popup in Task 6.
+            guard let self else { return }
+            NSLog("macUtil hot key fired, %d items in history", monitor.history.items.count)
         }
     }
 
