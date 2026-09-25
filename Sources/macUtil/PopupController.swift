@@ -27,6 +27,16 @@ final class PopupController {
     }
 
     func show() {
+        // Already open: bring the existing panel forward instead of building a
+        // second one. The previous-application capture below must not run again
+        // — macUtil is frontmost right now, and recording ourselves would break
+        // the paste target.
+        if let panel {
+            NSApp.activate(ignoringOtherApps: true)
+            panel.makeKeyAndOrderFront(nil)
+            return
+        }
+
         previousApplication = NSWorkspace.shared.frontmostApplication
 
         let viewModel = HistoryViewModel(monitor: monitor)
