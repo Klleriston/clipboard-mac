@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 import Testing
 @testable import ClipboardKit
@@ -78,18 +77,20 @@ private func withTemporaryDirectory(_ body: (URL) throws -> Void) throws {
     #expect(url.path.contains("Application Support"))
 }
 
-@Test func saveRestoresTheProcessUmask() throws {
+@Test func saveReplacesALoosePermissionFileWithAnOwnerOnlyOne() throws {
     try withTemporaryDirectory { directory in
-        let store = JSONHistoryStore(url: directory.appendingPathComponent("history.json"))
+        let url = directory.appendingPathComponent("history.json")
+        try Data("{}".utf8).write(to: url)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+
+        let store = JSONHistoryStore(url: url)
         var history = ClipboardHistory()
-        history.record("um")
-
-        let before = umask(0o022)
-        umask(before)
+        history.record("segredo")
         store.save(history)
-        let after = umask(0o022)
-        umask(after)
 
-        #expect(after == before)
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        let permissions = try #require(attributes[.posixPermissions] as? NSNumber)
+        #expect(permissions.int16Value == 0o600)
+        #expect(store.load().items.map(\.text) == ["segredo"])
     }
 }

@@ -41,15 +41,37 @@ public struct JSONHistoryStore: HistoryStore {
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        // A file created by an atomic write inherits the process umask, so it
-        // would be world-readable for the moment before the chmod below.
-        // Narrow the umask across the write instead: the file is never
-        // readable by anyone else, not even briefly.
-        let previousMask = Darwin.umask(0o077)
-        let wrote = (try? data.write(to: url, options: .atomic)) != nil
-        _ = Darwin.umask(previousMask)
-        guard wrote else { return }
-        // Clipboard text is sensitive; keep it out of other accounts' reach.
-        try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        writeOwnerOnly(data, to: url)
+    }
+
+    /// Writes `data` to `url` atomically and owner-only. The file is created
+    /// with mode 0600 rather than chmod'd afterwards, so its contents are never
+    /// readable by anyone else — not even for the instant between write and
+    /// rename. Foundation's atomic write cannot do this: it creates its
+    /// temporary file under the process umask.
+    private func writeOwnerOnly(_ data: Data, to url: URL) {
+        let temporary = url.deletingLastPathComponent()
+            .appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString)")
+        let descriptor = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+        guard descriptor >= 0 else { return }
+
+        var wrote = true
+        data.withUnsafeBytes { buffer in
+            var offset = 0
+            while offset < buffer.count {
+                // write(2) may satisfy only part of a large buffer.
+                let written = write(descriptor, buffer.baseAddress! + offset, buffer.count - offset)
+                guard written > 0 else { wrote = false; return }
+                offset += written
+            }
+        }
+        close(descriptor)
+
+        // rename(2) replaces the destination in one step, so a reader sees
+        // either the old file or the new one, never a half-written one.
+        guard wrote, rename(temporary.path, url.path) == 0 else {
+            unlink(temporary.path)
+            return
+        }
     }
 }
