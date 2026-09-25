@@ -43,11 +43,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pollTimer?.invalidate()
     }
 
-    /// Puts the chosen text back on the pasteboard.
+    /// Puts the chosen text on the pasteboard, hands focus back to the app the
+    /// user came from, and pastes there.
     private func use(_ item: ClipItem) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(item.text, forType: .string)
         monitor.acknowledgeOwnWrite()
+
+        guard Paster.isTrusted else {
+            Paster.requestTrust()
+            notifyPasteboardOnly()
+            return
+        }
+
+        popup?.previousApplication?.activate()
+        // The target app needs a moment to become frontmost before it can
+        // receive the synthesised keystroke.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            Paster.sendCommandV()
+        }
+    }
+
+    /// Fallback path when Accessibility permission is missing.
+    private func notifyPasteboardOnly() {
+        let alert = NSAlert()
+        alert.messageText = "Texto copiado para a área de transferência"
+        alert.informativeText = """
+            Para o macUtil colar automaticamente, permita o acesso em \
+            Ajustes do Sistema › Privacidade e Segurança › Acessibilidade. \
+            Por enquanto, use Cmd+V para colar.
+            """
+        alert.alertStyle = .informational
+        alert.runModal()
     }
 
     @objc private func openPopup() {
