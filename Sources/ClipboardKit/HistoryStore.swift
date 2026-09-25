@@ -47,9 +47,7 @@ public struct JSONHistoryStore: HistoryStore {
         // readable by anyone else, not even briefly.
         let previousMask = Darwin.umask(0o077)
         let wrote = (try? data.write(to: url, options: .atomic)) != nil
-        withUnsafeBytes(of: previousMask) { _ in
-            let _ = Darwin.umask(previousMask)
-        }
+        _ = Darwin.umask(previousMask)
         guard wrote else { return }
         // Clipboard text is sensitive; keep it out of other accounts' reach.
         try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
