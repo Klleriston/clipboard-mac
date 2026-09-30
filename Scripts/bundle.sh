@@ -16,8 +16,17 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BINARY" "$APP/Contents/MacOS/macUtil"
 cp Scripts/Info.plist "$APP/Contents/Info.plist"
 
-# Ad-hoc signature with a fixed identifier so macOS keeps recognising the app
-# across rebuilds.
-codesign --force --sign - --identifier dev.macutil.app "$APP"
+# Sign with a real certificate so the Accessibility grant survives rebuilds.
+# An ad-hoc signature's designated requirement is the binary's cdhash, which
+# changes on every build and silently invalidates the grant. Override with
+# MACUTIL_SIGN_IDENTITY; otherwise the first Apple Development identity in the
+# keychain is used, falling back to ad-hoc when none exists.
+IDENTITY="${MACUTIL_SIGN_IDENTITY:-$(security find-identity -v -p codesigning \
+    | sed -n 's/^ *[0-9]*) \([0-9A-F]\{40\}\) "Apple Development:.*/\1/p' | head -n 1)}"
+if [[ -z "$IDENTITY" ]]; then
+    echo "warning: no signing identity found; using ad-hoc (Accessibility must be re-granted after each build)" >&2
+    IDENTITY="-"
+fi
+codesign --force --sign "$IDENTITY" --identifier dev.macutil.app "$APP"
 
 echo "built $APP"
